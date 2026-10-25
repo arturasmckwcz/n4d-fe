@@ -6,7 +6,7 @@ import { EntityType } from "@/components/Dashboard/Profile/types";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CommunicationDialog } from "./CommunicationDialog";
-import { ConfirmationDialog } from "../shared/ConfirmationDialog";
+import { ConfirmationDialog } from "@/components/core/common/ConfirmationDialog";
 import { SectionWrapper, SectionEmptyState } from "../shared/styles";
 import {
   Table,
@@ -36,7 +36,6 @@ export const CommunicationTracker = forwardRef<CommunicationTrackerRef, Props>(f
   ref,
 ) {
   const { t } = useTranslation();
-  // true = only fetch when the user is logged in (has auth cookie)
   const currentUser = useCurrentUser(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<ApiCommunicationGet | undefined>(undefined);

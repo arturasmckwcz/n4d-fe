@@ -1,3 +1,4 @@
+import { EmailNoteControl, MatchHandler } from "../shared/types";
 import { TagsContainer } from "@/components/core/common/Tags";
 import { Tag } from "@/components/styled/tags";
 import { ActivitySpan } from "@/components/styled/text";
@@ -15,7 +16,8 @@ type Props = {
   volunteer: ApiVolunteerOpportunityGet;
   currentStatus: OpportunityVolunteerStatusType;
   hasEditingRights: boolean;
-  onMatch: () => void;
+  onMatch: MatchHandler;
+  emailNote: EmailNoteControl;
   onNotAMatch: () => void;
   onMarkAsActive: () => void;
   onMarkAsPast: () => void;
@@ -74,6 +76,7 @@ export default function VolunteerDetail({
   currentStatus,
   hasEditingRights,
   onMatch,
+  emailNote,
   onNotAMatch,
   onMarkAsActive,
   onMarkAsPast,
@@ -88,7 +91,6 @@ export default function VolunteerDetail({
 
   return (
     <DetailContainer>
-      {/* 1. Languages & Activities */}
       <SplitContainer>
         <InfoSection icon={TranslateIcon} title={t("dashboard.volunteers.languages")}>
           <LanguagesText languages={languages} />
@@ -99,7 +101,6 @@ export default function VolunteerDetail({
         </InfoSection>
       </SplitContainer>
 
-      {/* 2. Skills & Preferred availability */}
       <SplitContainer>
         <InfoSection icon={WrenchIcon} title={t("dashboard.volunteers.skillsExperience")}>
           <TagsWithOverflow tags={skillTags} />
@@ -110,7 +111,6 @@ export default function VolunteerDetail({
         </InfoSection>
       </SplitContainer>
 
-      {/* 3. Preferred districts */}
       <InfoSection icon={MapPinIcon} title={t("dashboard.volunteers.preferredDistricts")}>
         <DetailParagraph>{districtsText}</DetailParagraph>
       </InfoSection>
@@ -123,10 +123,10 @@ export default function VolunteerDetail({
         />
       )}
 
-      {/* 4. Action Buttons */}
       <StatusAccordionActions
         currentStatus={currentStatus}
         onMatch={onMatch}
+        emailNote={emailNote}
         onNotAMatch={onNotAMatch}
         onMarkAsActive={onMarkAsActive}
         onMarkAsPast={onMarkAsPast}

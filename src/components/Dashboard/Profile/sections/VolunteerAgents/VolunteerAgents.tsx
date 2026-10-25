@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { SectionEmptyState } from "../shared/styles";
 import { Tabs } from "../shared/Tabs";
+import { useMatchWithEmailNote } from "../shared/useMatchWithEmailNote";
 import { ITEM_STATUS_REMOVED, TAB_STATUS_ORDER, useTabTransitions } from "../shared/useTabTransitions";
 import { AccordionVolunteer } from "./AccordionVolunteer";
 import { VolunteerOpportunitiesContainer } from "./styles";
@@ -30,35 +31,43 @@ export const VolunteerAgents = ({ agentId }: Props) => {
 
   const volunteers = useMemo(() => data ?? [], [data]);
 
-  const { mutate: updateStatus } = useUpdateOpportunityVolunteerStatus(queryKey);
-  const { mutate: deleteLink } = useDeleteOpportunityVolunteer(queryKey);
+  const {
+    selectedTabIndex,
+    setSelectedTabIndex,
+    currentTabStatus,
+    tabCounts,
+    visibleItems,
+    setItemStatus,
+    clearItemStatus,
+  } = useTabTransitions(volunteers);
 
-  const { selectedTabIndex, setSelectedTabIndex, currentTabStatus, tabCounts, visibleItems, setItemStatus } =
-    useTabTransitions(volunteers);
+  const { mutate: updateStatus, mutateAsync: updateStatusAsync } = useUpdateOpportunityVolunteerStatus(
+    queryKey,
+    ({ m2mId, status }) => clearItemStatus(m2mId, status),
+  );
+  const { match, emailNoteFor } = useMatchWithEmailNote(setItemStatus, updateStatusAsync);
+  const { mutate: deleteLink } = useDeleteOpportunityVolunteer(queryKey, ({ m2mId }) =>
+    clearItemStatus(m2mId, ITEM_STATUS_REMOVED),
+  );
 
   const tabs = TAB_STATUS_ORDER.map((key, index) => ({
     label: t(`dashboard.volunteerProfile.opportunitiesSec.tabs.${key}`),
     count: tabCounts[index],
   }));
 
-  const handleMatch = (m2mId: number, volunteerId: number) => {
-    setItemStatus(m2mId, OpportunityVolunteerStatusType.MATCHED);
-    updateStatus({ m2mId, volunteerId, status: OpportunityVolunteerStatusType.MATCHED });
-  };
-
-  const handleNotAMatch = (m2mId: number, volunteerId: number) => {
+  const handleNotAMatch = (m2mId: number) => {
     setItemStatus(m2mId, ITEM_STATUS_REMOVED);
-    deleteLink({ m2mId, volunteerId });
+    deleteLink({ m2mId });
   };
 
-  const handleMarkAsActive = (m2mId: number, volunteerId: number) => {
+  const handleMarkAsActive = (m2mId: number) => {
     setItemStatus(m2mId, OpportunityVolunteerStatusType.ACTIVE);
-    updateStatus({ m2mId, volunteerId, status: OpportunityVolunteerStatusType.ACTIVE });
+    updateStatus({ m2mId, status: OpportunityVolunteerStatusType.ACTIVE });
   };
 
-  const handleMarkAsPast = (m2mId: number, volunteerId: number) => {
+  const handleMarkAsPast = (m2mId: number) => {
     setItemStatus(m2mId, OpportunityVolunteerStatusType.PAST);
-    updateStatus({ m2mId, volunteerId, status: OpportunityVolunteerStatusType.PAST });
+    updateStatus({ m2mId, status: OpportunityVolunteerStatusType.PAST });
   };
 
   if (isLoading) {
@@ -76,10 +85,11 @@ export const VolunteerAgents = ({ agentId }: Props) => {
             key={volunteer.id}
             volunteer={volunteer}
             currentStatus={currentTabStatus}
-            onMatch={() => handleMatch(volunteer.id, volunteer.volunteerId)}
-            onNotAMatch={() => handleNotAMatch(volunteer.id, volunteer.volunteerId)}
-            onMarkAsActive={() => handleMarkAsActive(volunteer.id, volunteer.volunteerId)}
-            onMarkAsPast={() => handleMarkAsPast(volunteer.id, volunteer.volunteerId)}
+            onMatch={() => match(volunteer.id)}
+            emailNote={emailNoteFor(volunteer.id)}
+            onNotAMatch={() => handleNotAMatch(volunteer.id)}
+            onMarkAsActive={() => handleMarkAsActive(volunteer.id)}
+            onMarkAsPast={() => handleMarkAsPast(volunteer.id)}
           />
         ))
       )}

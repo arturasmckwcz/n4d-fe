@@ -1,8 +1,8 @@
 "use client";
 import {
+  getMatchStatusDisplay,
   matchStatusColorMap,
   matchStatusIconMap,
-  OpportunityMatchStatusType,
 } from "@/components/Dashboard/Opportunities/OpportunityCard.helpers";
 import { EmptyPlaceholder } from "@/components/core/common/EmptyPlaceholder";
 import { EMPTY_PLACEHOLDER_VALUE } from "@/config/constants";
@@ -32,9 +32,6 @@ export const OpportunityHeader = ({ opportunity }: Props) => {
   const { isAuthorized, isOwnProfile } = useAuth(opportunity.agent?.id);
   const currentUser = useCurrentUser();
   const { currentAgents } = useGetCurrentAgent();
-  // Coordinator/admin may edit any opportunity; an agent may only change the
-  // status of an opportunity belonging to their own agent (mirrors the be
-  // ownership check on PATCH /opportunity/:id).
   const canChangeStatus =
     isAuthorized || (currentUser?.role === UserRole.AGENT && currentUser?.agentId === opportunity.agent?.id);
   const { t, i18n } = useTranslation();
@@ -47,7 +44,7 @@ export const OpportunityHeader = ({ opportunity }: Props) => {
     status: statusLabelMap[OpportunityManualStatusType.SEARCHING],
   });
   const volunteerTypeLabelMap = createVolunteerTypeLabelMap(t);
-  const { statusMatch } = opportunity as ApiOpportunityGet & { statusMatch?: string };
+  const matchStatus = getMatchStatusDisplay(opportunity.statusMatch, opportunity.noMatchFound);
 
   const postedDate = opportunity.createdAt ? formatDateTime(opportunity.createdAt) : EMPTY_PLACEHOLDER_VALUE;
   const subtitle = `${t("dashboard.opportunityProfile.postedOn")} ${postedDate}`;
@@ -75,8 +72,6 @@ export const OpportunityHeader = ({ opportunity }: Props) => {
         status={dialogStatus.selected}
         label={statusLabelMap[dialogStatus.selected]}
         extra={
-          // NGOs can only pick New/Inactive (fe#1048): explain why "searching"
-          // isn't offered to them.
           canChangeStatus &&
           !isAuthorized && (
             <StatusHelp onMouseEnter={() => setIsStatusHelpOpen(true)} onMouseLeave={() => setIsStatusHelpOpen(false)}>
@@ -104,12 +99,10 @@ export const OpportunityHeader = ({ opportunity }: Props) => {
       <StatusRowField
         title={t("dashboard.opportunityProfile.matchingStatus")}
         extra={
-          statusMatch ? (
-            <MatchStatusBadge
-              $color={matchStatusColorMap[statusMatch as OpportunityMatchStatusType] ?? "var(--color-blue-700)"}
-            >
-              {matchStatusIconMap[statusMatch as OpportunityMatchStatusType]}
-              <span>{t(`dashboard.opportunities.matchStatus.${statusMatch}`)}</span>
+          matchStatus ? (
+            <MatchStatusBadge $color={matchStatusColorMap[matchStatus] ?? "var(--color-blue-700)"}>
+              {matchStatusIconMap[matchStatus]}
+              <span>{t(`dashboard.opportunities.matchStatus.${matchStatus}`)}</span>
             </MatchStatusBadge>
           ) : (
             <EmptyPlaceholder />
@@ -150,8 +143,6 @@ export const OpportunityHeader = ({ opportunity }: Props) => {
   );
 };
 
-// Hover, tap and keyboard all open it, and the text wraps so it fits on phones
-// (the dashboard hover Tooltip is mouse-only and nowrap).
 const StatusHelp = styled.span`
   position: relative;
   display: inline-flex;

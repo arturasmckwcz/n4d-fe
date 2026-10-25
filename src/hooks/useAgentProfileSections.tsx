@@ -8,7 +8,7 @@ import {
 import { ContactDetails } from "@/components/Dashboard/Profile/sections/ContactDetails";
 import { OrganisationDetails } from "@/components/Dashboard/Profile/sections/OrganisationDetails";
 import { ProfileHeader } from "@/components/Dashboard/Profile/sections/ProfileHeader";
-import { ConfirmationDialog } from "@/components/Dashboard/Profile/sections/shared/ConfirmationDialog";
+import { ConfirmationDialog } from "@/components/core/common/ConfirmationDialog";
 import { DangerZoneButtonRow } from "@/components/Dashboard/Profile/sections/shared/DangerZoneButtonRow";
 import { EditableSectionRef } from "@/components/Dashboard/Profile/sections/shared/types";
 import { VolunteerAgents } from "@/components/Dashboard/Profile/sections/VolunteerAgents/VolunteerAgents";
@@ -65,8 +65,6 @@ export const useAgentProfileSections = (agent: ApiAgentProfileGet | undefined) =
     {
       iconName: IconName.ShootingStar,
       title: t("dashboard.volunteerProfile.opportunities"),
-      // NGO's own users only (fe#1034): the create page offers just the
-      // user's own NGOs, so a coordinator can't post for this NGO from there.
       ...(isOwnProfile && {
         headerButtonName: t("dashboard.agentProfile.opportunitiesSec.postOpportunity"),
         onHeaderButtonClick: () => router.push(`/${i18n.language}/dashboard/opportunities/new?agentId=${agent.id}`),

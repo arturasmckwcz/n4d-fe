@@ -62,3 +62,24 @@ export const decodeJwtPayload = (token: string) => {
     return null;
   }
 };
+
+export const rememberNotice = (key: string): void => {
+  try {
+    sessionStorage.setItem(key, "1");
+  } catch {}
+};
+
+export const consumeNotice = (key: string): boolean => {
+  try {
+    const present = sessionStorage.getItem(key) !== null;
+    sessionStorage.removeItem(key);
+    return present;
+  } catch {
+    return false;
+  }
+};
+
+export const ACCOUNT_READY_NOTICE = "n4d-account-ready";
+
+export const formatLocation = (postcode?: string | null, district?: string | null): string | null =>
+  [postcode, district].filter(Boolean).join(" ") || null;

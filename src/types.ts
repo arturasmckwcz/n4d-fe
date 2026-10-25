@@ -12,7 +12,6 @@ export type VolunteerIdProps = {
   volunteerId: string;
 };
 
-// Please, when adding a new line, ensure it's placed in a sorted way. !!!
 export enum Subpage {
   ABOUT = "about",
   DATA_PRIVACY = "data-privacy",
@@ -28,6 +27,7 @@ export enum Subpage {
   DATA_PROTECTION = "data-protection",
   GUIDELINES = "guidelines",
   RAC_GUIDELINES = "rac-guidelines",
+  FOR_ORGANISATIONS = "for-organisations",
 }
 
 export enum Env {

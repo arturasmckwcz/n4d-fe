@@ -48,9 +48,8 @@ type Props = {
   onClearAllFilters?: () => void;
   onClearFilter: (filter: string, parentKey?: string) => void;
   entityFilter?: EntityFilter;
-  // Optional slot next to the header title — e.g. a coordinator-only "+"
-  // button to create a record directly (fe#911). No consumer needs it yet
-  // beyond Agents, so it's a generic slot rather than a named prop per action.
+  showSearch?: boolean;
+  showListControls?: boolean;
   headerAction?: ReactNode;
 };
 
@@ -72,6 +71,8 @@ export default function CardsHeader({
   onClearAllFilters,
   onClearFilter,
   entityFilter,
+  showSearch = true,
+  showListControls = true,
   headerAction,
 }: Props) {
   const { t } = useTranslation();
@@ -99,18 +100,22 @@ export default function CardsHeader({
               </TabHeading>
             ))}
           </Tabs>
-          <SortBy sortOrder={sortOrder} onChange={onSortOrderChange} extraOptions={extraSortOptions} />
+          {showListControls && (
+            <SortBy sortOrder={sortOrder} onChange={onSortOrderChange} extraOptions={extraSortOptions} />
+          )}
         </TabsSectionContainer>
 
         <SearchBarSectionContainer>
-          <Search
-            placeHolder={searchPlaceholder ?? `${t("dashboard.searchPlaceHolder")}...`}
-            onInputChange={onSearchInputChange}
-            width="var(--filters-search-bar-width)"
-            backgroundColor="var(--color-magnolia-light)"
-            value={searchValue}
-          />
-          <FiltersButton setIsFiltersOpen={setIsFiltersOpen} />
+          {showSearch && (
+            <Search
+              placeHolder={searchPlaceholder ?? `${t("dashboard.searchPlaceHolder")}...`}
+              onInputChange={onSearchInputChange}
+              width="var(--filters-search-bar-width)"
+              backgroundColor="var(--color-magnolia-light)"
+              value={searchValue}
+            />
+          )}
+          {showListControls && <FiltersButton setIsFiltersOpen={setIsFiltersOpen} />}
         </SearchBarSectionContainer>
 
         <Results counter={resultCounter} text={resultText} />

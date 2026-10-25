@@ -3,12 +3,7 @@ import { Modal } from "@/components/core/modal";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { X } from "@phosphor-icons/react";
 import { de, enUS } from "date-fns/locale";
-import {
-  ApiCommunicationGet,
-  CommunicationType,
-  ContactMethodType,
-  ContactType,
-} from "need4deed-sdk";
+import { ApiCommunicationGet, CommunicationType, ContactMethodType, ContactType } from "need4deed-sdk";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -25,7 +20,12 @@ import {
   RadioRow,
   Select,
 } from "./styles";
-import { getCommunicationTypeOptions, getContactMethodOptions, getDefaultContactMethod } from "./utils/options";
+import {
+  getCommunicationTypeOptions,
+  getContactMethodOptions,
+  getDefaultContactMethod,
+  manualCommunicationTypes,
+} from "./utils/options";
 import { getContactTypeLabel } from "./utils/translations";
 import { CommunicationFormData, createValidationSchema } from "./utils/validation";
 
@@ -68,14 +68,17 @@ export function CommunicationDialog({ isOpen, onClose, onSave, initialData }: Pr
         reset({
           contactType: initialData.contactType,
           contactMethod: initialData.contactMethod,
-          communicationType: initialData.communicationType || CommunicationType.BRIEF,
+          communicationType:
+            initialData.communicationType && manualCommunicationTypes.includes(initialData.communicationType)
+              ? initialData.communicationType
+              : manualCommunicationTypes[0],
           date: new Date(initialData.date),
         });
       } else {
         reset({
           contactType: undefined,
           contactMethod: ContactMethodType.PHONE,
-          communicationType: CommunicationType.BRIEF,
+          communicationType: manualCommunicationTypes[0],
           date: new Date(),
         });
       }
@@ -118,7 +121,6 @@ export function CommunicationDialog({ isOpen, onClose, onSave, initialData }: Pr
                     type="radio"
                     value={type}
                     checked={field.value === type}
-                    // React Hook Form's onChange expects the value
                     onChange={() => {
                       field.onChange(type);
                       const defaultMethod = getDefaultContactMethod(type);

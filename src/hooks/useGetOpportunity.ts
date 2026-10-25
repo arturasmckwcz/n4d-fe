@@ -15,8 +15,31 @@ export const useGetOpportunity = (opportunityId: string | undefined) => {
 
   if (!data) return undefined;
 
+  const id = data.id;
+  const name = data.title;
+  const avatarUrl = data.avatarUrl ? getImageUrl(data.avatarUrl) : undefined;
+  const latitude = data.lat ?? null;
+  const longitude = data.lon ?? null;
+  const languages = data.languages;
+  const availability = data.availability;
+  const districtIds = [data.district?.id, ...(data.location ?? []).map(({ id }) => id)].filter(
+    (districtId): districtId is number => typeof districtId === "number",
+  );
+  const volunteerType = data.volunteerType;
+  const appointmentDate = data.appointmentDate;
+  const appointmentTime = data.appointmentTime;
+
   return {
-    name: data.title,
-    avatarUrl: data.avatarUrl ? getImageUrl(data.avatarUrl) : undefined,
+    id,
+    name,
+    avatarUrl,
+    latitude,
+    longitude,
+    languages,
+    availability,
+    districtIds,
+    volunteerType,
+    appointmentDate,
+    appointmentTime,
   };
 };

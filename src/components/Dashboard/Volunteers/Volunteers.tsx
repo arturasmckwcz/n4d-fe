@@ -1,16 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import styled from "styled-components";
 import { DashboardLayout } from "@/components/Layout";
 import { apiPathOption, questionMark, ScreenTypes } from "@/config/constants";
 import { useGetOpportunity, useGetQuery } from "@/hooks";
-import { ApiOptionLists, QueryParamsKeys, SortOrder, UserRole } from "need4deed-sdk";
+import {
+  ApiOptionLists,
+  LangPurpose,
+  ProfileVolunteeringType,
+  QueryParamsKeys,
+  SortOrder,
+  UserRole,
+  VolunteerStateEngagementType,
+} from "need4deed-sdk";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Filters from "../common/CardsFilter/Filters";
 import CardsHeader from "../common/CardsHeader/CardsHeader";
 import { getClearFilter, getClearSingleFilter } from "../common/CardsFilter/helpers";
+import {
+  applyMatchingPrefill,
+  hasFilterParams,
+  PREFILLED_PARAM,
+  withPrefilledMarker,
+} from "../common/CardsFilter/matchingPrefill";
 import { withOptionFilters } from "../common/CardsFilter/selectionFilters";
 import { volunteerFilterConfigs } from "./Filters/config";
 import { defaultVolunteerCardsFilter } from "./Filters/constants";
@@ -35,23 +49,23 @@ export function Volunteers() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const tabs =
-    !user || isAgent
-      ? []
-      : [
-          t("dashboard.volunteers.tabs.tab1"),
-          t("dashboard.volunteers.tabs.tab2"),
-          t("dashboard.opportunities.tabs.tab3"),
-        ];
+  const tabs = !user
+    ? []
+    : [
+        t("dashboard.volunteers.tabs.tab1"),
+        t("dashboard.volunteers.tabs.tab2"),
+        t("dashboard.opportunities.tabs.tab3"),
+      ];
   const urlViewParam = searchParams.get("view");
   const VIEW_MODE_BY_TAB = [ViewMode.LIST, ViewMode.CARDS, ViewMode.MAP];
-  const isMobileUser = screenType === ScreenTypes.MOBILE && user && !isAgent;
+  const isMobileUser = screenType === ScreenTypes.MOBILE && Boolean(user);
   const defaultTabIndex = isMobileUser ? 1 : 0;
   const foundIndex = VIEW_MODE_BY_TAB.findIndex((mode) => mode === urlViewParam);
   const selectedTabIndex = foundIndex === -1 ? defaultTabIndex : foundIndex;
   const viewMode = VIEW_MODE_BY_TAB[selectedTabIndex];
   const opportunityId = searchParams.get("opportunity") ?? undefined;
   const opportunityFilter = useGetOpportunity(opportunityId);
+  const prefilledForRef = useRef<string | null>(null);
 
   const handleSearchInputChange = (searchInput: string) => {
     handleFilterUpdate((prev) => ({ ...prev, [QueryParamsKeys.SEARCH]: searchInput }));
@@ -65,6 +79,7 @@ export function Volunteers() {
     const targetViewMode = VIEW_MODE_BY_TAB[index] ?? ViewMode.LIST;
 
     const params = new URLSearchParams(searchParams.toString());
+    params.delete("page");
     params.set("view", targetViewMode);
 
     router.push(pathname + questionMark + params.toString());
@@ -80,8 +95,12 @@ export function Volunteers() {
   };
 
   const handleRemoveOpportunityFilter = () => {
-    const params = new URLSearchParams(searchParams);
+    const wasPrefilled = searchParams.has(PREFILLED_PARAM);
+    const cleared = wasPrefilled ? getClearFilter(cardsFilter) : cardsFilter;
+    if (wasPrefilled) setCardsFilter(cleared);
+    const params = new URLSearchParams(serializeFilters(cleared, searchParams));
     params.delete("opportunity");
+    params.delete(PREFILLED_PARAM);
     router.push(pathname + questionMark + params.toString());
   };
 
@@ -98,14 +117,54 @@ export function Volunteers() {
   };
 
   useEffect(() => {
+    if (!opportunityId || !opportunityFilter || !apiFilterOptions) return;
+    if (prefilledForRef.current === opportunityId) return;
+    prefilledForRef.current = opportunityId;
+    if (hasFilterParams(searchParams, Object.keys(volunteerFilterConfigs))) return;
+
+    const isAccompanying = opportunityFilter.volunteerType === ProfileVolunteeringType.ACCOMPANYING;
+    const needsRefugeeLanguage =
+      isAccompanying || opportunityFilter.volunteerType === ProfileVolunteeringType.REGULAR_ACCOMPANYING;
+    const languages = opportunityFilter.languages.filter(({ purpose = LangPurpose.GENERAL }) =>
+      needsRefugeeLanguage
+        ? purpose === LangPurpose.RECIPIENT || purpose === LangPurpose.TRANSLATION
+        : purpose === LangPurpose.GENERAL,
+    );
+    const prefilled = applyMatchingPrefill(
+      withOptionFilters(volunteerFilterConfigs, defaultVolunteerCardsFilter, apiFilterOptions),
+      {
+        districtIds: opportunityFilter.districtIds,
+        languages,
+        availability: isAccompanying ? [] : opportunityFilter.availability,
+        appointmentDate: isAccompanying ? opportunityFilter.appointmentDate : null,
+        appointmentTime: isAccompanying ? opportunityFilter.appointmentTime : null,
+      },
+      { district: apiFilterOptions.district, language: apiFilterOptions.language },
+    );
+    prefilled[QueryParamsKeys.ENGAGEMENT][VolunteerStateEngagementType.AVAILABLE] = true;
+    router.replace(pathname + questionMark + withPrefilledMarker(serializeFilters(prefilled, searchParams)));
+  }, [apiFilterOptions, opportunityFilter, opportunityId, pathname, router, searchParams]);
+
+  useEffect(() => {
     if (!apiFilterOptions) return;
 
     setCardsFilter((prev) => {
       const baseFilters = withOptionFilters(volunteerFilterConfigs, prev, apiFilterOptions);
+      const deserializedFilters = deserializeVolunteerFilters(baseFilters, searchParams);
 
-      return deserializeVolunteerFilters(baseFilters, searchParams);
+      if (isAgent) deserializedFilters.search = "";
+
+      return deserializedFilters;
     });
-  }, [apiFilterOptions, searchParams]);
+  }, [apiFilterOptions, isAgent, searchParams]);
+
+  useEffect(() => {
+    if (!isAgent || !searchParams.has(QueryParamsKeys.SEARCH)) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete(QueryParamsKeys.SEARCH);
+    router.replace(pathname + questionMark + params.toString());
+  }, [isAgent, pathname, router, searchParams]);
 
   const activeFilters = createSelectedFilterItemsAsFlatArray(cardsFilter, setCardsFilter, t);
 
@@ -122,6 +181,7 @@ export function Volunteers() {
           setIsFiltersOpen={setIsFiltersOpen}
           onSearchInputChange={handleSearchInputChange}
           searchValue={cardsFilter.search}
+          showSearch={!isAgent}
           sortOrder={sortOrder}
           onSortOrderChange={handleSortChange}
           activeFilters={activeFilters}
@@ -140,6 +200,7 @@ export function Volunteers() {
             apiFilterOptions={apiFilterOptions}
             opportunityId={opportunityId}
             viewMode={viewMode}
+            opportunityFilter={opportunityFilter}
           />
           <Filters
             isFiltersOpen={isFiltersOpen}
@@ -153,8 +214,6 @@ export function Volunteers() {
 }
 
 export default Volunteers;
-
-/** Styles */
 
 const VolunteersContainer = styled.div`
   display: flex;

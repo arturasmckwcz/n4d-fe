@@ -3,18 +3,28 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/core/button";
 
-import { Actions } from "./accordionStyles";
-import { ConfirmationDialog } from "./ConfirmationDialog";
+import { Actions, MatchActions } from "./accordionStyles";
+import { EmailNoteField } from "./EmailNoteField";
+import { EmailNoteControl, MatchHandler } from "./types";
+import { ConfirmationDialog } from "@/components/core/common/ConfirmationDialog";
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
 type AccordionActionsProps = {
   onNotAMatch: () => void;
   onMatch?: () => void;
+  matchDisabled?: boolean;
   onMarkAsActive?: () => void;
   onMarkAsPast?: () => void;
 };
 
-export const AccordionActions = ({ onNotAMatch, onMatch, onMarkAsActive, onMarkAsPast }: AccordionActionsProps) => {
+export const AccordionActions = ({
+  onNotAMatch,
+  onMatch,
+  matchDisabled,
+  onMarkAsActive,
+  onMarkAsPast,
+}: AccordionActionsProps) => {
   const { t } = useTranslation();
   const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
 
@@ -43,6 +53,7 @@ export const AccordionActions = ({ onNotAMatch, onMatch, onMarkAsActive, onMarkA
       {onMatch && (
         <Button
           onClick={onMatch}
+          disabled={matchDisabled}
           text={t("dashboard.volunteerProfile.opportunitiesSec.match")}
           height="var(--volunteer-profile-opportunities-accordion-actions-button-height)"
           textFontSize="var(--volunteer-profile-opportunities-accordion-actions-button-textFontSize)"
@@ -70,21 +81,48 @@ export const AccordionActions = ({ onNotAMatch, onMatch, onMarkAsActive, onMarkA
 
 type StatusAccordionActionsProps = {
   currentStatus: OpportunityVolunteerStatusType;
-  onMatch: () => void;
+  onMatch: MatchHandler;
+  emailNote: EmailNoteControl;
   onNotAMatch: () => void;
   onMarkAsActive: () => void;
   onMarkAsPast: () => void;
 };
 
+type MatchWithEmailNoteProps = { onMatch: MatchHandler; emailNote: EmailNoteControl; onNotAMatch: () => void };
+
+const MatchWithEmailNote = ({ onMatch, emailNote, onNotAMatch }: MatchWithEmailNoteProps) => {
+  const [isMatching, setIsMatching] = useState(false);
+
+  const handleMatch = () => {
+    setIsMatching(true);
+    Promise.resolve(onMatch())
+      .catch(() => undefined)
+      .finally(() => setIsMatching(false));
+  };
+
+  return (
+    <MatchActions>
+      <EmailNoteField value={emailNote.value} onChange={emailNote.onChange} disabled={isMatching} />
+      <AccordionActions onNotAMatch={onNotAMatch} onMatch={handleMatch} matchDisabled={isMatching} />
+    </MatchActions>
+  );
+};
+
 export const StatusAccordionActions = ({
   currentStatus,
   onMatch,
+  emailNote,
   onNotAMatch,
   onMarkAsActive,
   onMarkAsPast,
 }: StatusAccordionActionsProps) => {
+  const { isAuthorized } = useAuth();
   if (currentStatus === OpportunityVolunteerStatusType.PENDING) {
-    return <AccordionActions onNotAMatch={onNotAMatch} onMatch={onMatch} />;
+    return isAuthorized ? (
+      <MatchWithEmailNote onMatch={onMatch} emailNote={emailNote} onNotAMatch={onNotAMatch} />
+    ) : (
+      <AccordionActions onNotAMatch={onNotAMatch} />
+    );
   }
   if (currentStatus === OpportunityVolunteerStatusType.MATCHED) {
     return <AccordionActions onNotAMatch={onNotAMatch} onMarkAsActive={onMarkAsActive} />;

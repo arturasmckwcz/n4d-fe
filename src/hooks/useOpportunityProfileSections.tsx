@@ -7,7 +7,7 @@ import { OpportunityVolunteers } from "@/components/Dashboard/Profile/sections/O
 import { SuggestDialog } from "@/components/Dashboard/Profile/sections/OpportunityVolunteers/SuggestDialog";
 import { ProfileHeader } from "@/components/Dashboard/Profile/sections/ProfileHeader";
 import { RefugeeAccommodationCentre } from "@/components/Dashboard/Profile/sections/RefugeeAccommodationCentre";
-import { ConfirmationDialog } from "@/components/Dashboard/Profile/sections/shared/ConfirmationDialog";
+import { ConfirmationDialog } from "@/components/core/common/ConfirmationDialog";
 import { DangerZoneButtonRow } from "@/components/Dashboard/Profile/sections/shared/DangerZoneButtonRow";
 import { EditableSectionRef } from "@/components/Dashboard/Profile/sections/shared/types";
 import { IconName } from "@/components/Dashboard/Profile/types";
@@ -45,7 +45,7 @@ export const useOpportunityProfileSections = (opportunity: ApiOpportunityGet | u
   const volunteer = useGetVolunteer(volunteerId);
   const { isAlreadyMatched } = useGetVolunteerOpportunityLinked(opportunity?.id ?? 0, volunteerId);
 
-  const { mutate: suggestMutate } = useSuggestVolunteerOpportunity(() => {
+  const { mutate: suggestMutate, isPending: isSuggesting } = useSuggestVolunteerOpportunity(() => {
     setIsSuggestDialogOpen(false);
     router.push(`/${i18n.language}/dashboard/volunteers/${volunteerId}`);
   }, ["volunteer-opportunities", String(volunteerId)]);
@@ -62,12 +62,13 @@ export const useOpportunityProfileSections = (opportunity: ApiOpportunityGet | u
     opportunity.volunteerType === VolunteerStateTypeType.ACCOMPANYING ||
     opportunity.volunteerType === VolunteerStateTypeType.REGULAR_ACCOMPANYING;
 
-  const handleSuggestConfirm = () => {
+  const handleSuggestConfirm = (emailNote: string) => {
     if (!volunteerId) return;
     suggestMutate({
       opportunityId: Number(opportunity.id),
       volunteerId: Number(volunteerId),
       status: OpportunityVolunteerStatusType.PENDING,
+      emailNote,
     });
   };
 
@@ -150,6 +151,7 @@ export const useOpportunityProfileSections = (opportunity: ApiOpportunityGet | u
                 volunteerName={volunteer?.name}
                 onCancel={() => setIsSuggestDialogOpen(false)}
                 onConfirm={handleSuggestConfirm}
+                isPending={isSuggesting}
               />
             )}
           </>

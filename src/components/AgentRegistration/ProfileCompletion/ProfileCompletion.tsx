@@ -6,7 +6,14 @@ import { useGetQuery } from "@/hooks";
 import { getLocalizedErrorMessage } from "@/utils/apiErrors";
 import axios from "axios";
 import i18next from "i18next";
-import { ApiAgentRegisterConflict, ApiOptionLists } from "need4deed-sdk";
+import {
+  ApiAgentAddressConflict,
+  ApiAgentRegisterConflict,
+  ApiAgentRegisterStatus,
+  ApiAgentTitleConflict,
+  ApiOptionLists,
+} from "need4deed-sdk";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { AgentMembershipStatus, ApiAgentRegister, ApiAgentRegisterNew, ApiAgentRegisterResponse } from "../types";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -34,13 +41,13 @@ import {
 import { defaultProfileCompletionData, ProfileCompletionData, TOTAL_COMPLETION_STEPS } from "../types";
 import { CheckMark, MatchBanner, MatchActions, MatchListCopy, MatchRow, SmallButton } from "./styled";
 import { useAgentAddressLookup } from "./useAgentAddressLookup";
+import { useGetRegistrationOrganizations } from "@/hooks/useGetRegistrationOrganizations";
 import { setAuthHint } from "@/utils/helpers";
 
-function buildNewAgent(formData: ProfileCompletionData): ApiAgentRegisterNew {
+function buildNewAgent(formData: ProfileCompletionData, organizationId?: number): ApiAgentRegisterNew {
   return {
     title: formData.organizationName,
-    // `info`/`languages: number[]` follow the registration contract — these
-    // deliberately differ from the agent PATCH shape (`about`/`OptionById[]`).
+    organizationId,
     typeId: formData.organizationType || undefined,
     info: formData.about || undefined,
     website: formData.website || undefined,
@@ -62,20 +69,36 @@ export function ProfileCompletion() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pending, setPending] = useState(false);
-  // When a CREATE collides with an existing NGO (same name or same address),
-  // the API says which and returns its id, so we can offer to JOIN it instead.
-  const [conflict, setConflict] = useState<ApiAgentRegisterConflict | null>(null);
+  const [submittedRegistration, setSubmittedRegistration] = useState<ApiAgentRegisterStatus | null>(null);
+  const currentUser = useCurrentUser(true);
+  const registrationQuery = useGetQuery<ApiAgentRegisterStatus>({
+    queryKey: ["agent-register-status", token ?? ""],
+    apiPath: `${apiPathAgentRegister}/status?token=${encodeURIComponent(token ?? "")}`,
+    enabled: Boolean(token),
+    staleTime: 0,
+    toastOnError: false,
+  });
+  const registration = submittedRegistration ?? registrationQuery.data;
+  const [conflict, setConflict] = useState<ApiAgentTitleConflict | ApiAgentAddressConflict | null>(null);
   const errorBannerRef = useRef<HTMLDivElement>(null);
 
   const { data: optionLists } = useGetQuery<ApiOptionLists>({
     queryKey: ["options"],
     apiPath: apiPathOption,
   });
+  const {
+    organizations,
+    isLoading: isOperatorListLoading,
+    isError: isOperatorListError,
+  } = useGetRegistrationOrganizations(token);
+  const operatorListState = isOperatorListError ? "error" : isOperatorListLoading ? "loading" : "ready";
+  const operatorTitles = organizations.map((organization) => organization.title);
+  const operatorId = organizations.find((organization) => organization.title === formData.operator.trim())?.id;
 
   const { matches, selectedAgent, showBanner, selectMatch, dismissMatch } = useAgentAddressLookup(
     formData.addressStreet,
     token,
-    (m) => update({ addressStreet: m.title }),
+    (m) => m.title && update({ addressStreet: m.title }),
   );
 
   const showSubmitError = useCallback((message: string) => {
@@ -124,8 +147,20 @@ export function ProfileCompletion() {
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 409) {
         const data = err.response.data as Partial<ApiAgentRegisterConflict> | undefined;
+        if (data?.conflict === "registered" && data.agentId && data.membershipStatus) {
+          setSubmittedRegistration({
+            registered: true,
+            agentId: data.agentId,
+            membershipStatus: data.membershipStatus,
+          });
+          return;
+        }
         if (data?.agentId) {
-          setConflict({ conflict: data.conflict === "address" ? "address" : "title", agentId: data.agentId });
+          setConflict({
+            conflict: data.conflict === "address" ? "address" : "title",
+            agentId: data.agentId,
+            agentTitle: "agentTitle" in data ? data.agentTitle : undefined,
+          });
           return;
         }
       }
@@ -135,28 +170,26 @@ export function ProfileCompletion() {
     }
   };
 
-  // JOIN an existing agent (picked from the street lookup, or accepted from a
-  // title conflict). Membership lands ACTIVE on email-domain match, else PENDING.
   const submitJoin = (agentId: number) => submit({ agentId });
 
+  const submitAtSharedAddress = () =>
+    submit({ agent: { ...buildNewAgent(formData, operatorId), confirmSharedAddress: true } });
+
   const handleSubmit = () => {
-    // Joining an existing agent submits only { agentId } — the create-form
-    // (street/postcode/org) validation must not run, or the missing postcode
-    // blocks the join.
     if (selectedAgent) {
       submitJoin(selectedAgent.id);
       return;
     }
-    const stepErrors = validateCompletionStep(step, formData, t);
+    const stepErrors = validateCompletionStep(step, formData, t, operatorTitles, operatorListState);
     if (Object.keys(stepErrors).length > 0) {
       setErrors(stepErrors);
       return;
     }
-    submit({ agent: buildNewAgent(formData) });
+    submit({ agent: buildNewAgent(formData, operatorId) });
   };
 
   const handleNext = () => {
-    const stepErrors = validateCompletionStep(step, formData, t);
+    const stepErrors = validateCompletionStep(step, formData, t, operatorTitles, operatorListState);
     if (Object.keys(stepErrors).length > 0) {
       setErrors(stepErrors);
       return;
@@ -170,7 +203,7 @@ export function ProfileCompletion() {
     setStep((s) => s - 1);
   };
 
-  if (pending) {
+  if (pending || (registration?.registered && registration.membershipStatus === AgentMembershipStatus.PENDING)) {
     return (
       <Wrapper>
         <Card>
@@ -183,8 +216,48 @@ export function ProfileCompletion() {
     );
   }
 
-  // A picked agent (or accepted title conflict) is a JOIN: submit the membership
-  // request directly without the create-only org/services steps.
+  if (registration?.registered) {
+    return (
+      <Wrapper>
+        <Card>
+          <SuccessWrapper>
+            <SuccessTitle>{t("agentRegistration.completed.title")}</SuccessTitle>
+            <SuccessText>
+              {registration.agentTitle
+                ? t("agentRegistration.completed.namedDescription", { name: registration.agentTitle })
+                : t("agentRegistration.completed.description")}
+            </SuccessText>
+            <Button
+              text={t("agentRegistration.completed.continue")}
+              onClick={() => router.replace(`/${i18next.language}/${currentUser ? "dashboard" : "login"}`)}
+            />
+          </SuccessWrapper>
+        </Card>
+      </Wrapper>
+    );
+  }
+
+  if (!token || registrationQuery.isLoading || registrationQuery.isError || !registration) {
+    const error = !token
+      ? t("agentRegistration.errors.missingToken")
+      : registrationQuery.isError
+        ? axios.isAxiosError(registrationQuery.error) && registrationQuery.error.response?.status === 401
+          ? t("agentRegistration.errors.missingToken")
+          : getLocalizedErrorMessage(registrationQuery.error, t)
+        : null;
+    return (
+      <Wrapper>
+        <Card>
+          {error ? (
+            <ErrorBanner role="alert">{error}</ErrorBanner>
+          ) : (
+            <SuccessText role="status">{t("agentRegistration.completed.checking")}</SuccessText>
+          )}
+        </Card>
+      </Wrapper>
+    );
+  }
+
   const isJoining = !!selectedAgent;
   const isLastStep = step === TOTAL_COMPLETION_STEPS;
   const tokenMissing = !token;
@@ -195,10 +268,6 @@ export function ProfileCompletion() {
         <PageTitle>{t("agentRegistration.completion.title")}</PageTitle>
         <PageSubtitle>{t("agentRegistration.completion.subtitle")}</PageSubtitle>
 
-        {/* The verify-email link lands here (fe#1097), after /verify-email has
-            already activated the account: confirm that, so the form doesn't
-            read as a fresh registration. Hidden once a submit fails (e.g. an
-            expired token) so it never sits next to an error. */}
         {!tokenMissing && !submitError && (
           <MatchBanner $matched role="status">
             <CheckMark>✓</CheckMark>
@@ -212,13 +281,12 @@ export function ProfileCompletion() {
 
         {conflict && (
           <MatchBanner $matched={false} role="alert">
-            {/* fe#1098: say whether the name or the address matched, and what
-                joining means, so it doesn't read as "registration rejected". */}
             <span>
               {t(
-                conflict.conflict === "address"
-                  ? "agentRegistration.completion.addressTaken"
-                  : "agentRegistration.completion.titleTaken",
+                `agentRegistration.completion.${conflict.conflict === "address" ? "addressTaken" : "titleTaken"}${
+                  conflict.agentTitle ? "Named" : ""
+                }`,
+                { name: conflict.agentTitle },
               )}{" "}
               {t("agentRegistration.completion.joinDescription")}
             </span>
@@ -226,6 +294,11 @@ export function ProfileCompletion() {
               <SmallButton $primary onClick={() => submitJoin(conflict.agentId)}>
                 {t("agentRegistration.completion.joinInstead")}
               </SmallButton>
+              {conflict.conflict === "address" && (
+                <SmallButton onClick={submitAtSharedAddress} disabled={isSubmitting}>
+                  {t("agentRegistration.completion.createAtSharedAddress")}
+                </SmallButton>
+              )}
               <SmallButton onClick={() => setConflict(null)}>
                 {t("agentRegistration.completion.editDetails")}
               </SmallButton>
@@ -235,13 +308,15 @@ export function ProfileCompletion() {
 
         {step === 1 &&
           (isJoining ? (
-            // Picked an existing org: this is a membership request, not an edit.
-            // Show a clear read-only confirmation + an undo back to creating.
             <div>
               <StepTitle>{t("agentRegistration.completion.joinTitle")}</StepTitle>
               <MatchBanner $matched>
                 <CheckMark>✓</CheckMark>
-                <span>{t("agentRegistration.completion.joiningOrg", { name: selectedAgent?.title })}</span>
+                <span>
+                  {selectedAgent?.title
+                    ? t("agentRegistration.completion.joiningOrg", { name: selectedAgent.title })
+                    : t("agentRegistration.completion.joiningUnnamedOrg")}
+                </span>
               </MatchBanner>
               <StepDescription>{t("agentRegistration.completion.joinDescription")}</StepDescription>
               <MatchActions>
@@ -267,7 +342,7 @@ export function ProfileCompletion() {
                     </MatchListCopy>
                     {matches.map((agent) => (
                       <MatchRow key={agent.id} type="button" onClick={() => selectMatch(agent)}>
-                        {agent.title}
+                        {agent.title ?? t("agentRegistration.completion.unnamedMatch")}
                       </MatchRow>
                     ))}
                     <MatchActions>
@@ -283,7 +358,13 @@ export function ProfileCompletion() {
           ))}
 
         {!isJoining && step === 2 && (
-          <OrgInfoStep data={formData} onChange={update} errors={errors} optionLists={optionLists} />
+          <OrgInfoStep
+            data={formData}
+            onChange={update}
+            errors={errors}
+            optionLists={optionLists}
+            operatorTitles={operatorTitles}
+          />
         )}
         {!isJoining && step === 3 && <ServicesStep data={formData} onChange={update} optionLists={optionLists} />}
 
